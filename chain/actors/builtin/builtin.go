@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	smoothing0 "github.com/filecoin-project/specs-actors/actors/util/smoothing"
+	smoothing1 "github.com/filecoin-project/specs-actors/v2/actors/util/smoothing"
 
 	"github.com/filecoin-project/go-state-types/network"
 )
@@ -29,4 +30,8 @@ type FilterEstimate = smoothing0.FilterEstimate
 
 func FromV0FilterEstimate(v0 smoothing0.FilterEstimate) FilterEstimate {
 	return (FilterEstimate)(v0)
+}
+
+func FromV1FilterEstimate(v1 smoothing1.FilterEstimate) FilterEstimate {
+	return (FilterEstimate)(v1)
 }
