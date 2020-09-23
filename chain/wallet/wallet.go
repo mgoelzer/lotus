@@ -1,10 +1,18 @@
 package wallet
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
+
+	cbg "github.com/whyrusleeping/cbor-gen"
+
+	"github.com/filecoin-project/lotus/node/modules/dtypes"
+	"github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-datastore/namespace"
 
 	"github.com/filecoin-project/go-state-types/crypto"
 	logging "github.com/ipfs/go-log/v2"
@@ -304,4 +312,78 @@ func ActSigType(typ string) crypto.SigType {
 	default:
 		return 0
 	}
+}
+
+const (
+	dsKeyAddrNonce = "AddressNonce"
+)
+
+type MessageSigner struct {
+	*Wallet
+	ds datastore.Batching
+}
+
+func NewMessageSigner(wallet *Wallet, ds dtypes.MetadataDS) *MessageSigner {
+	ds = namespace.Wrap(ds, datastore.NewKey("/message-signer/"))
+	return &MessageSigner{
+		Wallet: wallet,
+		ds:     ds,
+	}
+}
+
+func (ms *MessageSigner) SignMessage(ctx context.Context, msg *types.Message) (*types.SignedMessage, error) {
+	nonce, err := ms.nextNonce(msg.From)
+	if err != nil {
+		return nil, xerrors.Errorf("failed to create nonce: %w", err)
+	}
+
+	msg.Nonce = nonce
+	sig, err := ms.Sign(ctx, msg.From, msg.Cid().Bytes())
+	if err != nil {
+		return nil, xerrors.Errorf("failed to sign message: %w", err)
+	}
+
+	return &types.SignedMessage{
+		Message:   *msg,
+		Signature: *sig,
+	}, nil
+}
+
+func (ms *MessageSigner) nextNonce(addr address.Address) (uint64, error) {
+	addrNonceKey := datastore.KeyWithNamespaces([]string{dsKeyAddrNonce, addr.String()})
+
+	// Get the nonce for this address from the datastore
+	nonce := uint64(0)
+	nonceBytes, err := ms.ds.Get(addrNonceKey)
+	switch {
+	case xerrors.Is(err, datastore.ErrNotFound):
+		// No nonce yet for this address so just use zero
+	case err != nil:
+		return 0, xerrors.Errorf("failed to get nonce from datastore: %w", err)
+	default:
+		// There is a nonce already, so get it and increment
+		maj, val, err := cbg.CborReadHeader(bytes.NewReader(nonceBytes))
+		if err != nil {
+			return 0, err
+		}
+
+		if maj != cbg.MajUnsignedInt {
+			return 0, fmt.Errorf("bad cbor type")
+		}
+
+		nonce = val + 1
+	}
+
+	// Write the nonce to the datastore for this address
+	buf := bytes.Buffer{}
+	_, err = buf.Write(cbg.CborEncodeMajorType(cbg.MajUnsignedInt, nonce))
+	if err != nil {
+		return 0, xerrors.Errorf("failed to marshall nonce: %w", err)
+	}
+	err = ms.ds.Put(addrNonceKey, buf.Bytes())
+	if err != nil {
+		return 0, xerrors.Errorf("failed to write nonce to datastore: %w", err)
+	}
+
+	return nonce, nil
 }

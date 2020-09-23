@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/filecoin-project/lotus/chain/wallet"
+
+	"github.com/filecoin-project/lotus/chain/stmgr"
+
 	"github.com/filecoin-project/go-address"
 	"github.com/ipfs/go-cid"
 	"go.uber.org/fx"
@@ -23,6 +27,10 @@ type MpoolAPI struct {
 	GasAPI
 
 	Chain *store.ChainStore
+
+	StateManager *stmgr.StateManager
+
+	MessageSigner *wallet.MessageSigner
 
 	Mpool *messagepool.MessagePool
 
@@ -143,33 +151,37 @@ func (a *MpoolAPI) MpoolPushMessage(ctx context.Context, msg *types.Message, spe
 			inJson, outJson)
 	}
 
-	sign := func(from address.Address, nonce uint64) (*types.SignedMessage, error) {
-		msg.Nonce = nonce
-		if msg.From.Protocol() == address.ID {
-			log.Warnf("Push from ID address (%s), adjusting to %s", msg.From, from)
-			msg.From = from
-		}
-
-		b, err := a.WalletBalance(ctx, msg.From)
+	m := *msg
+	if m.From.Protocol() == address.ID {
+		ts := a.Chain.GetHeaviestTipSet()
+		from, err := a.StateManager.ResolveToKeyAddress(ctx, m.From, ts)
 		if err != nil {
-			return nil, xerrors.Errorf("mpool push: getting origin balance: %w", err)
+			return nil, xerrors.Errorf("resolving sender key: %w", err)
 		}
-
-		if b.LessThan(msg.Value) {
-			return nil, xerrors.Errorf("mpool push: not enough funds: %s < %s", b, msg.Value)
-		}
-
-		return a.WalletSignMessage(ctx, from, msg)
+		log.Warnf("Push from ID address (%s), adjusting to %s", m.From, from)
+		m.From = from
 	}
 
-	var m *types.SignedMessage
-again:
-	m, err = a.Mpool.PushWithNonce(ctx, msg.From, sign)
-	if err == messagepool.ErrTryAgain {
-		log.Debugf("temporary failure while pushing message: %s; retrying", err)
-		goto again
+	b, err := a.WalletBalance(ctx, m.From)
+	if err != nil {
+		return nil, xerrors.Errorf("mpool push: getting origin balance: %w", err)
 	}
-	return m, err
+
+	if b.LessThan(m.Value) {
+		return nil, xerrors.Errorf("mpool push: not enough funds: %s < %s", b, m.Value)
+	}
+
+	smsg, err := a.MessageSigner.SignMessage(ctx, &m)
+	if err != nil {
+		return nil, xerrors.Errorf("mpool push: failed to sign message: %w", err)
+	}
+
+	_, err = a.Mpool.Push(smsg)
+	if err != nil {
+		return nil, xerrors.Errorf("mpool push: failed to push message: %w", err)
+	}
+
+	return smsg, err
 }
 
 func (a *MpoolAPI) MpoolGetNonce(ctx context.Context, addr address.Address) (uint64, error) {
