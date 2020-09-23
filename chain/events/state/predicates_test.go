@@ -382,7 +382,7 @@ func TestMinerSectorChange(t *testing.T) {
 	si0 := newSectorOnChainInfo(0, tutils.MakeCID("0", &miner0.SealedCIDPrefix), big.NewInt(0), abi.ChainEpoch(0), abi.ChainEpoch(10))
 	si1 := newSectorOnChainInfo(1, tutils.MakeCID("1", &miner0.SealedCIDPrefix), big.NewInt(1), abi.ChainEpoch(1), abi.ChainEpoch(11))
 	si2 := newSectorOnChainInfo(2, tutils.MakeCID("2", &miner0.SealedCIDPrefix), big.NewInt(2), abi.ChainEpoch(2), abi.ChainEpoch(11))
-	oldMinerC := createMinerState(ctx, t, store, owner, worker, []miner.SectorOnChainInfo{si0, si1, si2})
+	oldMinerC := createMinerState(ctx, t, store, owner, worker, []miner0.SectorOnChainInfo{si0, si1, si2})
 
 	si3 := newSectorOnChainInfo(3, tutils.MakeCID("3", &miner0.SealedCIDPrefix), big.NewInt(3), abi.ChainEpoch(3), abi.ChainEpoch(12))
 	// 0 delete
@@ -391,7 +391,7 @@ func TestMinerSectorChange(t *testing.T) {
 	// 3 added
 	si1Ext := si1
 	si1Ext.Expiration++
-	newMinerC := createMinerState(ctx, t, store, owner, worker, []miner.SectorOnChainInfo{si1Ext, si2, si3})
+	newMinerC := createMinerState(ctx, t, store, owner, worker, []miner0.SectorOnChainInfo{si1Ext, si2, si3})
 
 	minerAddr := nextIDAddrF()
 	oldState, err := mockTipset(minerAddr, 1)
@@ -538,7 +538,7 @@ func createBalanceTable(ctx context.Context, t *testing.T, store adt.Store, bala
 	return [2]cid.Cid{escrowRootCid, lockedRootCid}
 }
 
-func createMinerState(ctx context.Context, t *testing.T, store adt.Store, owner, worker address.Address, sectors []miner.SectorOnChainInfo) cid.Cid {
+func createMinerState(ctx context.Context, t *testing.T, store adt.Store, owner, worker address.Address, sectors []miner0.SectorOnChainInfo) cid.Cid {
 	rootCid := createSectorsAMT(ctx, t, store, sectors)
 
 	state := createEmptyMinerState(ctx, t, store, owner, worker)
@@ -578,7 +578,7 @@ func createEmptyMinerState(ctx context.Context, t *testing.T, store adt.Store, o
 
 }
 
-func createSectorsAMT(ctx context.Context, t *testing.T, store adt.Store, sectors []miner.SectorOnChainInfo) cid.Cid {
+func createSectorsAMT(ctx context.Context, t *testing.T, store adt.Store, sectors []miner0.SectorOnChainInfo) cid.Cid {
 	root := adt.MakeEmptyArray(store)
 	for _, sector := range sectors {
 		sector := sector
@@ -591,9 +591,9 @@ func createSectorsAMT(ctx context.Context, t *testing.T, store adt.Store, sector
 }
 
 // returns a unique SectorOnChainInfo with each invocation with SectorNumber set to `sectorNo`.
-func newSectorOnChainInfo(sectorNo abi.SectorNumber, sealed cid.Cid, weight big.Int, activation, expiration abi.ChainEpoch) miner.SectorOnChainInfo {
+func newSectorOnChainInfo(sectorNo abi.SectorNumber, sealed cid.Cid, weight big.Int, activation, expiration abi.ChainEpoch) miner0.SectorOnChainInfo {
 	info := newSectorPreCommitInfo(sectorNo, sealed, expiration)
-	return miner.SectorOnChainInfo{
+	return miner0.SectorOnChainInfo{
 		SectorNumber: info.SectorNumber,
 		SealProof:    info.SealProof,
 		SealedCID:    info.SealedCID,
@@ -614,8 +614,8 @@ const (
 )
 
 // returns a unique SectorPreCommitInfo with each invocation with SectorNumber set to `sectorNo`.
-func newSectorPreCommitInfo(sectorNo abi.SectorNumber, sealed cid.Cid, expiration abi.ChainEpoch) *miner.SectorPreCommitInfo {
-	return &miner.SectorPreCommitInfo{
+func newSectorPreCommitInfo(sectorNo abi.SectorNumber, sealed cid.Cid, expiration abi.ChainEpoch) *miner0.SectorPreCommitInfo {
+	return &miner0.SectorPreCommitInfo{
 		SealProof:     abi.RegisteredSealProof_StackedDrg32GiBV1,
 		SectorNumber:  sectorNo,
 		SealedCID:     sealed,
