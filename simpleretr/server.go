@@ -16,7 +16,7 @@ import (
 // server implements exchange.Server. It services requests for the
 // libp2p ChainExchange protocol.
 type server struct {
-	//	HandleStream(stream inet.Stream)
+	HandleStream(stream inet.Stream)
 }
 
 var _ Server = (*server)(nil)
