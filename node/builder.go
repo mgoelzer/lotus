@@ -67,6 +67,7 @@ import (
 	"github.com/filecoin-project/lotus/paychmgr/settler"
 	"github.com/filecoin-project/lotus/storage"
 	"github.com/filecoin-project/lotus/storage/sectorblocks"
+	//"github.com/filecoin-project/lotus/simpleretr"
 )
 
 // EnvJournalDisabledEvents is the environment variable through which disabled
@@ -115,6 +116,7 @@ const (
 
 	RunHelloKey
 	RunChainExchangeKey
+	RunSimpleRetrKey
 	RunChainGraphsync
 	RunPeerMgrKey
 
@@ -287,6 +289,7 @@ func Online() Option {
 
 			Override(RunHelloKey, modules.RunHello),
 			Override(RunChainExchangeKey, modules.RunChainExchange),
+			//Override(RunSimpleRetrKey, modules.RunSimpleRetrieve),
 			Override(RunPeerMgrKey, modules.RunPeerMgr),
 			Override(HandleIncomingBlocksKey, modules.HandleIncomingBlocks),
 

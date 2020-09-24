@@ -30,6 +30,7 @@ import (
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/modules/helpers"
 	"github.com/filecoin-project/lotus/node/repo"
+	"github.com/filecoin-project/lotus/simpleretr"
 )
 
 func RunHello(mctx helpers.MetricsCtx, lc fx.Lifecycle, h host.Host, svc *hello.Service) error {
@@ -76,6 +77,10 @@ func RunPeerMgr(mctx helpers.MetricsCtx, lc fx.Lifecycle, pmgr *peermgr.PeerMgr)
 func RunChainExchange(h host.Host, svc exchange.Server) {
 	h.SetStreamHandler(exchange.BlockSyncProtocolID, svc.HandleStream)     // old
 	h.SetStreamHandler(exchange.ChainExchangeProtocolID, svc.HandleStream) // new
+}
+
+func RunSimpleRetrieve(h host.Host, svc simpleretr.Server) {
+	h.SetStreamHandler(simpleretr.SimpleRetieveProtocolID, svc.HandleStream)
 }
 
 func HandleIncomingBlocks(mctx helpers.MetricsCtx, lc fx.Lifecycle, ps *pubsub.PubSub, s *chain.Syncer, bserv dtypes.ChainBlockService, chain *store.ChainStore, stmgr *stmgr.StateManager, h host.Host, nn dtypes.NetworkName) {
