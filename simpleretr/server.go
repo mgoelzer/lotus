@@ -20,13 +20,10 @@ type server struct {
 
 var _ Server = (*server)(nil)
 
-// NewServer creates a new libp2p-based simpleretr.Server. It services requests
-// for the libp2p ChainExchange protocol.
 func NewServer() Server {
 	return &server{}
 }
 
-// HandleStream implements Server.HandleStream. Refer to the godocs there.
 func (s *server) HandleStream(stream inet.Stream) {
 	//ctx, span := trace.StartSpan(context.Background(), "simple-retrieve.HandleStream")
 	//defer span.End()
