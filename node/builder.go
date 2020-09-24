@@ -65,9 +65,9 @@ import (
 	"github.com/filecoin-project/lotus/node/repo"
 	"github.com/filecoin-project/lotus/paychmgr"
 	"github.com/filecoin-project/lotus/paychmgr/settler"
+	"github.com/filecoin-project/lotus/simpleretr"
 	"github.com/filecoin-project/lotus/storage"
 	"github.com/filecoin-project/lotus/storage/sectorblocks"
-	//"github.com/filecoin-project/lotus/simpleretr"
 )
 
 // EnvJournalDisabledEvents is the environment variable through which disabled
@@ -289,7 +289,7 @@ func Online() Option {
 
 			Override(RunHelloKey, modules.RunHello),
 			Override(RunChainExchangeKey, modules.RunChainExchange),
-			//Override(RunSimpleRetrKey, modules.RunSimpleRetrieve),
+			Override(RunSimpleRetrKey, modules.RunSimpleRetrieve),
 			Override(RunPeerMgrKey, modules.RunPeerMgr),
 			Override(HandleIncomingBlocksKey, modules.HandleIncomingBlocks),
 
@@ -350,6 +350,7 @@ func Online() Option {
 			Override(HandleDealsKey, modules.HandleDeals),
 			Override(new(gen.WinningPoStProver), storage.NewWinningPoStProver),
 			Override(new(*miner.Miner), modules.SetupBlockProducer),
+			Override(new(simpleretr.Server), simpleretr.NewServer),
 
 			Override(new(dtypes.ConsiderOnlineStorageDealsConfigFunc), modules.NewConsiderOnlineStorageDealsConfigFunc),
 			Override(new(dtypes.SetConsiderOnlineStorageDealsConfigFunc), modules.NewSetConsideringOnlineStorageDealsFunc),
