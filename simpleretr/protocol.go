@@ -9,56 +9,59 @@ import (
 	//"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
 	//"golang.org/x/xerrors"
-
-	//"github.com/filecoin-project/lotus/chain/types"
 )
 
 var log = logging.Logger("simple-retrieve")
 
-// If you are implementing the other side of this protocol in another language, 
-// you should translate this const block into your language.
+////////////////////////////////////////////////////////
+//                                                    //
+//                    CONSTANTS                       //
+//                                                    //
+////////////////////////////////////////////////////////
+
+// If you are implementing the other side of this protocol in another language,
+// translate all the const blocks below to your language.
+
+// Mandatory values (temporary - in future versions nodes can negotiate these)
 const (
-	// Protocol ID used on the wire
+	mandatoryPaymentIntervalInBytes         = 1024 * 1024     // 1MB
+	mandatoryPaymentIntervalIncreaseInBytes = 5 * 1024 * 1024 // 5MB
+)
+
+// Protocol ID used on the wire
+const (
 	SimpleRetieveProtocolID = "/fil/simple-retrieve/0.0.1"
-
-	// Request types
-	RequestTypeInitialize = 1
 )
 
-// TODO: Rename. Make private.
-type RequestInitialize struct {
-	// List of ordered CIDs comprising a `TipSetKey` from where to start
-	// fetching backwards.
-	// FIXME: Consider using `TipSetKey` now (introduced after the creation
-	//  of this protocol) instead of converting back and forth.
-	//Head []cid.Cid
-	// Number of block sets to fetch from `Head` (inclusive, should always
-	// be in the range `[1, MaxRequestLength]`).
-	//Length uint64
-	// Request options, see `Options` type for more details. Compressed
-	// in a single `uint64` to save space.
-	//Options uint64
-}
-
-// TODO: Rename. Make private.
-type ResponseInitialize struct {
-	ResponseCode status
-	ErrorMessage string
-	Data string
-}
-
-type status uint64
-
+// Request/Response Types
 const (
-	Ok status = 0
-
-	// TODO:  customize errors
-	// Errors
-	NotFound      = 201
-	GoAway        = 202
-	InternalError = 203
-	BadRequest    = 204
+	// RequestTypeNumFoo = N     // N corresponds to RequestFoo, RespnoseFoo structs
+	ReqRespNumInitialize = 1 // corresponds to RequestInitialize, ResponseInitialize
 )
+
+// -- Response Codes --
+const (
+	// Commonly used response codes
+	ResponseCodeOk = /*responseCode*/ 0
+
+	// Error state response codes (Initialize)
+	ResponseCodeInitializeNoCid = 101
+	ResponseCodeInitializeFail  = 102
+)
+
+//
+// Initialize roundtrip
+//
+type RequestInitialize struct {
+	CID                            string `json:"cid"` // TODO:  use native go-cid Cid type
+	PaymentIntervalInBytes         int64  `json:"paymentIntervalInBytes"`
+	PaymentIntervalIncreaseInBytes int64  `json:"paymentIntervalIncreaseInBytes"`
+}
+type ResponseInitialize struct {
+	ResponseCode int
+	ErrorMessage string
+	Data         string
+}
 
 /* // Convert status to internal error.
 func (res *Response) statusToError() error {
