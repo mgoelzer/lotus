@@ -1,13 +1,13 @@
 package simpleretr
 
+//import (
+//"bufio"
+//"context"
+//"fmt"
+//"time"
+//"go.opencensus.io/trace"
+//"golang.org/x/xerrors"
 import (
-	//"bufio"
-	//"context"
-	//"fmt"
-	//"time"
-
-	//"go.opencensus.io/trace"
-	//"golang.org/x/xerrors"
 
 	//"github.com/ipfs/go-cid"
 	inet "github.com/libp2p/go-libp2p-core/network"
@@ -16,7 +16,6 @@ import (
 // server implements exchange.Server. It services requests for the
 // libp2p ChainExchange protocol.
 type server struct {
-	HandleStream(stream inet.Stream)
 }
 
 var _ Server = (*server)(nil)
