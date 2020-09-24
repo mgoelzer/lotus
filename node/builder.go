@@ -246,7 +246,6 @@ func Online() Option {
 		Override(new(*slashfilter.SlashFilter), modules.NewSlashFilter),
 
 		// Full node
-
 		ApplyIf(isType(repo.FullNode),
 			// TODO: Fix offline mode
 
@@ -351,6 +350,7 @@ func Online() Option {
 			Override(new(gen.WinningPoStProver), storage.NewWinningPoStProver),
 			Override(new(*miner.Miner), modules.SetupBlockProducer),
 			Override(new(simpleretr.Server), simpleretr.NewServer),
+			Override(RunSimpleRetrKey, modules.RunSimpleRetrieve),
 
 			Override(new(dtypes.ConsiderOnlineStorageDealsConfigFunc), modules.NewConsiderOnlineStorageDealsConfigFunc),
 			Override(new(dtypes.SetConsiderOnlineStorageDealsConfigFunc), modules.NewSetConsideringOnlineStorageDealsFunc),
