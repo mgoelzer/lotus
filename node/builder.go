@@ -288,7 +288,6 @@ func Online() Option {
 
 			Override(RunHelloKey, modules.RunHello),
 			Override(RunChainExchangeKey, modules.RunChainExchange),
-			Override(RunSimpleRetrKey, modules.RunSimpleRetrieve),
 			Override(RunPeerMgrKey, modules.RunPeerMgr),
 			Override(HandleIncomingBlocksKey, modules.HandleIncomingBlocks),
 
