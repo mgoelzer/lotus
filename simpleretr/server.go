@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 
-	"time"
 	//"go.opencensus.io/trace"
 	//"golang.org/x/xerrors"
 
@@ -35,19 +34,50 @@ func (s *server) HandleStream(stream inet.Stream) {
 	defer stream.Close()
 	fmt.Println(">>> [start] HandleStream()")
 
-	for {
-		err, requestJson := getIncomingJsonString(bufio.NewReader(stream))
+	//for
+	{
+		// err, requestJson := getIncomingJsonString(bufio.NewReader(stream))
+		// if err != nil {
+		// 	log.Warnf("failed to read incoming message: %s\n", err)
+		// 	//break
+		// 	return
+		// }
+
+		// //else if err == io.EOF { // Need to wait on stream instead of busy wait with sleep
+		// //	time.Sleep(5 * time.Second)
+		// //}
+
+		//fmt.Printf("READ> %s\n\n", requestJson)
+		//UnmarshallJsonAndHandle(requestJson, stream)
+
+		w := bufio.NewWriter(stream)
+		str := fmt.Sprintf(`{"type":"response","response":%v,"responseCode”:%v,"totalBytes":68157440}`, ReqRespInitialize, ResponseCodeOk)
+		strBytes := len(str)
+
+		//////
+		// _, err = w.WriteString(str)
+		// if err != nil {
+		// 	log.Warnf("failed to write to stream with WriteString: %s\n", err)
+		// 	return
+		// }
+		//////
+		buf := []byte(str)
+		n, err := w.Write(buf)
 		if err != nil {
-			log.Warnf("failed to read incoming message: %s", err)
-			break
-		} else if err == io.EOF { // Need to wait on stream instead of busy wait with sleep
-			time.Sleep(5 * time.Second)
+			log.Warnf("failed to write to stream with Write: %s\n", err)
+			return
 		}
-		fmt.Printf("READ> %s\n\n", requestJson)
-		UnmarshallJsonAndHandle(requestJson, stream)
+		if n == strBytes {
+			log.Infof("Correct number of bytes sent back to client (%v bytes)\n", n)
+		} else {
+			log.Errorf("Wrong number of bytes sent back to client (%v bytes send, %v bytes expectd)\n", n, strBytes)
+		}
+		//////
 	}
 
 	fmt.Println(">>> [end] HandleStream()")
+
+	//if err := cborutil.WriteCborRPC(stream, resp); err != nil {}
 
 	/*	var req Request
 		if err := cborutil.ReadCborRPC(bufio.NewReader(stream), &req); err != nil {
