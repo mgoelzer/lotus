@@ -1,15 +1,22 @@
 package simpleretr
 
-//import (
-//"bufio"
-//"context"
-//"fmt"
-//"time"
-//"go.opencensus.io/trace"
-//"golang.org/x/xerrors"
 import (
+	//"bufio"
+	//"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"time"
+	//"go.opencensus.io/trace"
+	//"golang.org/x/xerrors"
 
 	//"github.com/ipfs/go-cid"
+	"bufio"
+	"bytes"
+	"io"
+
+	//cborutil "github.com/filecoin-project/go-cbor-util"
 	inet "github.com/libp2p/go-libp2p-core/network"
 )
 
@@ -25,10 +32,22 @@ func NewServer() Server {
 }
 
 func (s *server) HandleStream(stream inet.Stream) {
-	//ctx, span := trace.StartSpan(context.Background(), "simple-retrieve.HandleStream")
-	//defer span.End()
+	defer stream.Close()
+	fmt.Println(">>> [start] HandleStream()")
 
-	defer stream.Close() //nolint:errcheck
+	for {
+		err, requestJson := getIncomingJsonString(bufio.NewReader(stream))
+		if err != nil {
+			log.Warnf("failed to read incoming message: %s", err)
+			break
+		} else if err == io.EOF { // Need to wait on stream instead of busy wait with sleep
+			time.Sleep(5 * time.Second)
+		}
+		fmt.Printf("READ> %s\n\n", requestJson)
+		UnmarshallJsonAndHandle(requestJson, stream)
+	}
+
+	fmt.Println(">>> [end] HandleStream()")
 
 	/*	var req Request
 		if err := cborutil.ReadCborRPC(bufio.NewReader(stream), &req); err != nil {
@@ -53,6 +72,87 @@ func (s *server) HandleStream(stream inet.Stream) {
 		}
 		_ = stream.SetDeadline(time.Time{})
 	*/
+}
+
+func UnmarshallJsonAndHandle(jsonStr string, stream inet.Stream) error {
+	genericReqOrResp := GenericRequestOrResponse{}
+	if err := json.Unmarshal([]byte(jsonStr), &genericReqOrResp); err != nil {
+		return err
+	}
+	if genericReqOrResp.ReqOrResp == "request" {
+		switch genericReqOrResp.Request {
+		case ReqRespInitialize:
+			reqInitialize := RequestInitialize{}
+			if err := json.Unmarshal([]byte(jsonStr), &reqInitialize); err != nil {
+				return err
+			}
+			if err := HandleRequestInitialize(&reqInitialize, stream); err != nil {
+				return err
+			}
+		case ReqRespConfirmTransferParams:
+			fmt.Println("ConfirmTransferParams")
+		case ReqRespTransfer:
+			fmt.Println("Transfer")
+		case ReqRespVoucher:
+			fmt.Println("Voucher")
+		}
+	} else {
+		return errors.New("Server should never receive a Response struct")
+	}
+	return nil
+}
+
+func HandleRequestInitialize(reqInitialize *RequestInitialize, stream inet.Stream) error {
+	fmt.Println("--RequestInitialize--")
+	fmt.Printf(".ReqOrResp = %v\n", reqInitialize.ReqOrResp)
+	fmt.Printf(".Request   = %v\n", reqInitialize.Request)
+	fmt.Printf(".PchAddr = %v\n", reqInitialize.PchAddr)
+	fmt.Printf(".Cid = %v\n", reqInitialize.Cid)
+	fmt.Printf(".Offset0 = %v\n", reqInitialize.Offset0)
+
+	// Assert Offset0==0 in this version
+
+	// Make sure we have this Cid + Cid's total size at Offset0
+
+	// PchAddress - save it somewhere for later voucher validation
+
+	// Prepare a ResponseInitialize struct
+
+	// Serialize to Json and fire away
+
+	w := bufio.NewWriter(stream)
+	str := fmt.Sprintf(`{"type":"response","response":%v,"responseCode”:%v,"totalBytes":68157440}`, ReqRespInitialize, ResponseCodeOk)
+	strBytes := len(str)
+	fmt.Printf("HandleRequestInitialize: sending back '%s'\n", str)
+	n, err := w.WriteString(str)
+	if err != nil {
+		return err
+	}
+	if n == strBytes {
+		fmt.Println("HandleRequestInitialize:  all bytes written to stream")
+		return nil
+	} else {
+		return errors.New("Error(HandleRequestInitialize):  not all bytes written to stream")
+	}
+}
+
+func getIncomingJsonString(r io.Reader) (error, string) {
+	var err error
+	intermediateBuffer := bytes.Buffer{}
+	buf := make([]byte, 32)
+	for {
+		n, err := r.Read(buf)
+		//fmt.Printf("n = %v | buf = %v | buf[:n]= %q\n", n, buf, buf[:n])
+		intermediateBuffer.Write(buf[:n])
+		if err == io.EOF {
+			fmt.Printf("readIncomingString:  EOF\n")
+			break
+		} else if err != nil {
+			fmt.Printf("readIncomingString:  error while reading (%v)\n", err)
+			break
+		}
+	}
+	return err, intermediateBuffer.String()
 }
 
 // TODO:  Delete this, just around for what I can steal from blocksync

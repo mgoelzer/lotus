@@ -24,8 +24,8 @@ var log = logging.Logger("simple-retrieve")
 
 // Mandatory values (temporary - in future versions nodes can negotiate these)
 const (
-	mandatoryPaymentIntervalInBytes         = 1024 * 1024     // 1MB
-	mandatoryPaymentIntervalIncreaseInBytes = 5 * 1024 * 1024 // 5MB
+	mandatoryPaymentIntervalInBytes         = 1048576  // 1 mb
+	mandatoryPaymentIntervalIncreaseInBytes = 10485760 // 10 mb
 )
 
 // Protocol ID used on the wire
@@ -35,27 +35,65 @@ const (
 
 // Request/Response Types
 const (
-	// RequestTypeNumFoo = N     // N corresponds to RequestFoo, RespnoseFoo structs
-	ReqRespNumInitialize = 1 // corresponds to RequestInitialize, ResponseInitialize
+	// ReqRespFoo = N    // ==> int N corresponds to RequestFoo, RespnoseFoo structs
+	ReqRespInitialize            = 1
+	ReqRespConfirmTransferParams = 2
+	ReqRespTransfer              = 3
+	ReqRespVoucher               = 4
 )
 
 // -- Response Codes --
 const (
 	// Commonly used response codes
-	ResponseCodeOk = /*responseCode*/ 0
+	ResponseCodeOk             = 0
+	ResponseCodeGeneralFailure = 1
 
-	// Error state response codes (Initialize)
+	// Add'l error states for Initialize
 	ResponseCodeInitializeNoCid = 101
-	ResponseCodeInitializeFail  = 102
+
+	// Add'l error states for ConfirmTransferParams
+	ResponseCodeConfirmTransferParamsWrongParams = 201
+
+	// Add'l error states for Transfer
+	// (none)
+
+	// Add'l error states for Voucher
+	ResponseCodeVoucherSigInvalid = 301
 )
 
+// TODO: make this enum a constant in this code
+///
+// SignedVoucher:
+//  enum SignatureType {
+//    Secp256k1 = 1,
+//    BLS = 2,
+//}
+///
+
 //
-// Initialize roundtrip
+// Deserialization structs
+//
+type GenericRequestOrResponse struct {
+	ReqOrResp    string `json:"type"`
+	Request      int
+	Response     int
+	ResponseCode int
+	ErrorMessage string
+}
+
+type GenericRequest struct {
+	ReqOrResp string `json:"type"`
+	Request   int
+}
+
+//
+// "Initialize" roundtrip structs
 //
 type RequestInitialize struct {
-	CID                            string `json:"cid"` // TODO:  use native go-cid Cid type
-	PaymentIntervalInBytes         int64  `json:"paymentIntervalInBytes"`
-	PaymentIntervalIncreaseInBytes int64  `json:"paymentIntervalIncreaseInBytes"`
+	GenericRequest
+	PchAddr string
+	Cid     string // TODO:  use native go-cid Cid type
+	Offset0 int64
 }
 type ResponseInitialize struct {
 	ResponseCode int
