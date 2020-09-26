@@ -34,45 +34,15 @@ func (s *server) HandleStream(stream inet.Stream) {
 	defer stream.Close()
 	fmt.Println(">>> [start] HandleStream()")
 
-	//for
-	{
-		// err, requestJson := getIncomingJsonString(bufio.NewReader(stream))
-		// if err != nil {
-		// 	log.Warnf("failed to read incoming message: %s\n", err)
-		// 	//break
-		// 	return
-		// }
-
-		// //else if err == io.EOF { // Need to wait on stream instead of busy wait with sleep
-		// //	time.Sleep(5 * time.Second)
-		// //}
-
-		//fmt.Printf("READ> %s\n\n", requestJson)
-		//UnmarshallJsonAndHandle(requestJson, stream)
-
-		w := bufio.NewWriter(stream)
-		str := fmt.Sprintf(`{"type":"response","response":%v,"responseCode”:%v,"totalBytes":68157440}`, ReqRespInitialize, ResponseCodeOk)
-		strBytes := len(str)
-
-		//////
-		// _, err = w.WriteString(str)
-		// if err != nil {
-		// 	log.Warnf("failed to write to stream with WriteString: %s\n", err)
-		// 	return
-		// }
-		//////
-		buf := []byte(str)
-		n, err := w.Write(buf)
+	for {
+		err, requestJson := getIncomingJsonString(bufio.NewReader(stream))
 		if err != nil {
-			log.Warnf("failed to write to stream with Write: %s\n", err)
-			return
+			log.Warnf("failed to read incoming message: %s\n", err)
+			break
+			//return
 		}
-		if n == strBytes {
-			log.Infof("Correct number of bytes sent back to client (%v bytes)\n", n)
-		} else {
-			log.Errorf("Wrong number of bytes sent back to client (%v bytes send, %v bytes expectd)\n", n, strBytes)
-		}
-		//////
+		fmt.Printf("READ> %s\n\n", requestJson)
+		UnmarshallJsonAndHandle(requestJson, stream)
 	}
 
 	fmt.Println(">>> [end] HandleStream()")
@@ -120,25 +90,33 @@ func UnmarshallJsonAndHandle(jsonStr string, stream inet.Stream) error {
 				return err
 			}
 		case ReqRespConfirmTransferParams:
-			fmt.Println("ConfirmTransferParams")
+			fmt.Println("[sretrieve] ConfirmTransferParams")
 		case ReqRespTransfer:
-			fmt.Println("Transfer")
+			fmt.Println("[sretrieve] Transfer")
+			reqTransfer := RequestTransfer{}
+			log.Infof("[sretrieve] Received ")
+			if err := json.Unmarshal([]byte(jsonStr), &reqTransfer); err != nil {
+				return err
+			}
+			if err := HandleRequestTransfer(&reqTransfer, stream); err != nil {
+				return err
+			}
 		case ReqRespVoucher:
-			fmt.Println("Voucher")
+			fmt.Println("[sretrieve] Voucher")
 		}
 	} else {
-		return errors.New("Server should never receive a Response struct")
+		return errors.New("[sretrieve] Ignoring: server should never receive a Response struct")
 	}
 	return nil
 }
 
 func HandleRequestInitialize(reqInitialize *RequestInitialize, stream inet.Stream) error {
-	fmt.Println("--RequestInitialize--")
-	fmt.Printf(".ReqOrResp = %v\n", reqInitialize.ReqOrResp)
-	fmt.Printf(".Request   = %v\n", reqInitialize.Request)
-	fmt.Printf(".PchAddr = %v\n", reqInitialize.PchAddr)
-	fmt.Printf(".Cid = %v\n", reqInitialize.Cid)
-	fmt.Printf(".Offset0 = %v\n", reqInitialize.Offset0)
+	fmt.Println("[sretrieve] --RequestInitialize--")
+	fmt.Printf("[sretrieve] .ReqOrResp = %v\n", reqInitialize.ReqOrResp)
+	fmt.Printf("[sretrieve] .Request   = %v\n", reqInitialize.Request)
+	fmt.Printf("[sretrieve] .PchAddr = %v\n", reqInitialize.PchAddr)
+	fmt.Printf("[sretrieve] .Cid = %v\n", reqInitialize.Cid)
+	fmt.Printf("[sretrieve] .Offset0 = %v\n", reqInitialize.Offset0)
 
 	// Assert Offset0==0 in this version
 
@@ -150,20 +128,33 @@ func HandleRequestInitialize(reqInitialize *RequestInitialize, stream inet.Strea
 
 	// Serialize to Json and fire away
 
-	w := bufio.NewWriter(stream)
-	str := fmt.Sprintf(`{"type":"response","response":%v,"responseCode”:%v,"totalBytes":68157440}`, ReqRespInitialize, ResponseCodeOk)
-	strBytes := len(str)
-	fmt.Printf("HandleRequestInitialize: sending back '%s'\n", str)
-	n, err := w.WriteString(str)
-	if err != nil {
-		return err
-	}
-	if n == strBytes {
-		fmt.Println("HandleRequestInitialize:  all bytes written to stream")
-		return nil
-	} else {
-		return errors.New("Error(HandleRequestInitialize):  not all bytes written to stream")
-	}
+	jsonStr := fmt.Sprintf(`{"type":"response","response":%v,"responseCode":%v,"totalBytes":68157440}`, ReqRespInitialize, ResponseCodeOk)
+
+	err := writeToStream(stream, jsonStr)
+
+	return err
+}
+
+func HandleRequestTransfer(reqTransfer *RequestTransfer, stream inet.Stream) error {
+	fmt.Println("[sretrieve] --RequestTransfer--")
+	fmt.Printf("[sretrieve] .ReqOrResp = %v\n", reqTransfer.ReqOrResp)
+	fmt.Printf("[sretrieve] .Request   = %v\n", reqTransfer.Request)
+
+	// Assert Offset0==0 in this version
+
+	// Make sure we have this Cid + Cid's total size at Offset0
+
+	// PchAddress - save it somewhere for later voucher validation
+
+	// Prepare a ResponseInitialize struct
+
+	// Serialize to Json and fire away
+
+	jsonStr := fmt.Sprintf(`{"type":"response","response":%v,"responseCode":%v,"totalBytes":68157440}`, ReqRespInitialize, ResponseCodeOk)
+
+	err := writeToStream(stream, jsonStr)
+
+	return err
 }
 
 func getIncomingJsonString(r io.Reader) (error, string) {
@@ -183,6 +174,31 @@ func getIncomingJsonString(r io.Reader) (error, string) {
 		}
 	}
 	return err, intermediateBuffer.String()
+}
+
+func writeToStream(stream inet.Stream, s string) error {
+	w := bufio.NewWriter(stream)
+	sBuf := []byte(s)
+	sBytes := len(s)
+	fmt.Printf("writeToStream: sending back '%s'\n", s)
+
+	//n, err := w.WriteString(s)
+	n, err := w.Write(sBuf)
+	if err != nil {
+		return err
+	}
+
+	if err = w.Flush(); err != nil {
+		return err
+	}
+
+	if n == sBytes {
+		log.Infof("writeToStream:  all bytes written to stream (%v bytes)", n)
+		return nil
+	} else {
+		log.Errorf("Wrong number of bytes sent back to client (%v bytes send, %v bytes expectd)\n", sBytes, n)
+		return errors.New("Error(writeToStream):  not all bytes written to stream")
+	}
 }
 
 // TODO:  Delete this, just around for what I can steal from blocksync
