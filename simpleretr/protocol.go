@@ -26,6 +26,7 @@ var log = logging.Logger("simple-retrieve")
 const (
 	mandatoryPaymentIntervalInBytes         = 1048576  // 1 mb
 	mandatoryPaymentIntervalIncreaseInBytes = 10485760 // 10 mb
+	mandatoryOffset0                        = 0        // TODO:  fix this to allow retries
 )
 
 // Protocol ID used on the wire
@@ -96,6 +97,20 @@ type RequestInitialize struct {
 	Offset0 int64
 }
 type ResponseInitialize struct {
+	ResponseCode int
+	ErrorMessage string
+	Data         string
+}
+
+//
+// "Transfer" roundtrip structs
+//
+type RequestTransfer struct {
+	GenericRequest
+	N      string
+	Offset int64
+}
+type ResponseTransfer struct {
 	ResponseCode int
 	ErrorMessage string
 	Data         string
