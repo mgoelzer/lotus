@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
 	//"go.opencensus.io/trace"
 	//"golang.org/x/xerrors"
@@ -13,10 +14,11 @@ import (
 	//"github.com/ipfs/go-cid"
 	"bufio"
 	"bytes"
+	b64 "encoding/base64"
 	"io"
 
 	//cborutil "github.com/filecoin-project/go-cbor-util"
-	inet "github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/network"
 )
 
 // server implements exchange.Server. It services requests for the
@@ -26,13 +28,27 @@ type server struct {
 
 var _ Server = (*server)(nil)
 
+// Global variable for now -- MockDataStore is just temp
+// (Not protected by lock because MockDataStore is read-only and thread safe)
+var ds MockDataStore = NewMockDataStore()
+
+// Per connection state
+// No lock because the protocol is inherently serial and single threaded
+type connectionState struct {
+	Cid     string
+	Offset0 int64
+}
+
 func NewServer() Server {
 	return &server{}
 }
 
-func (s *server) HandleStream(stream inet.Stream) {
+func (s *server) HandleStream(stream network.Stream) {
 	defer stream.Close()
 	fmt.Println(">>> [start] HandleStream()")
+
+	// Instantiate the state struct for this specific /fil/simple-retrieve connection
+	cstate := &connectionState{}
 
 	for {
 		err, requestJson := getIncomingJsonString(bufio.NewReader(stream))
@@ -42,7 +58,7 @@ func (s *server) HandleStream(stream inet.Stream) {
 			//return
 		}
 		fmt.Printf("READ> %s\n\n", requestJson)
-		UnmarshallJsonAndHandle(requestJson, stream)
+		UnmarshallJsonAndHandle(requestJson, stream, cstate)
 	}
 
 	fmt.Println(">>> [end] HandleStream()")
@@ -74,7 +90,7 @@ func (s *server) HandleStream(stream inet.Stream) {
 	*/
 }
 
-func UnmarshallJsonAndHandle(jsonStr string, stream inet.Stream) error {
+func UnmarshallJsonAndHandle(jsonStr string, stream network.Stream, cstate *connectionState) error {
 	genericReqOrResp := GenericRequestOrResponse{}
 	if err := json.Unmarshal([]byte(jsonStr), &genericReqOrResp); err != nil {
 		return err
@@ -86,7 +102,7 @@ func UnmarshallJsonAndHandle(jsonStr string, stream inet.Stream) error {
 			if err := json.Unmarshal([]byte(jsonStr), &reqInitialize); err != nil {
 				return err
 			}
-			if err := HandleRequestInitialize(&reqInitialize, stream); err != nil {
+			if err := HandleRequestInitialize(&reqInitialize, stream, cstate); err != nil {
 				return err
 			}
 		case ReqRespConfirmTransferParams:
@@ -98,7 +114,7 @@ func UnmarshallJsonAndHandle(jsonStr string, stream inet.Stream) error {
 			if err := json.Unmarshal([]byte(jsonStr), &reqTransfer); err != nil {
 				return err
 			}
-			if err := HandleRequestTransfer(&reqTransfer, stream); err != nil {
+			if err := HandleRequestTransfer(&reqTransfer, stream, cstate); err != nil {
 				return err
 			}
 		case ReqRespVoucher:
@@ -110,7 +126,7 @@ func UnmarshallJsonAndHandle(jsonStr string, stream inet.Stream) error {
 	return nil
 }
 
-func HandleRequestInitialize(reqInitialize *RequestInitialize, stream inet.Stream) error {
+func HandleRequestInitialize(reqInitialize *RequestInitialize, stream network.Stream, cstate *connectionState) error {
 	fmt.Println("[sretrieve] --RequestInitialize--")
 	fmt.Printf("[sretrieve] .ReqOrResp = %v\n", reqInitialize.ReqOrResp)
 	fmt.Printf("[sretrieve] .Request   = %v\n", reqInitialize.Request)
@@ -121,39 +137,56 @@ func HandleRequestInitialize(reqInitialize *RequestInitialize, stream inet.Strea
 	// Assert Offset0==0 in this version
 
 	// Make sure we have this Cid + Cid's total size at Offset0
+	cid := reqInitialize.Cid
+	hasCid, err := ds.HasCid(cid)
+	if err != nil || !hasCid {
+		return errors.New(fmt.Sprintf("Server does not have cid '%v'", cid))
+	}
+
+	// Cid - save it somewhere
+	cstate.Cid = cid
+	cstate.Offset0 = reqInitialize.Offset0
 
 	// PchAddress - save it somewhere for later voucher validation
 
 	// Prepare a ResponseInitialize struct
 
 	// Serialize to Json and fire away
-
 	jsonStr := fmt.Sprintf(`{"type":"response","response":%v,"responseCode":%v,"totalBytes":68157440}`, ReqRespInitialize, ResponseCodeOk)
-
-	err := writeToStream(stream, jsonStr)
-
+	err = writeToStream(stream, jsonStr)
 	return err
 }
 
-func HandleRequestTransfer(reqTransfer *RequestTransfer, stream inet.Stream) error {
+func HandleRequestTransfer(reqTransfer *RequestTransfer, stream network.Stream, cstate *connectionState) error {
 	fmt.Println("[sretrieve] --RequestTransfer--")
 	fmt.Printf("[sretrieve] .ReqOrResp = %v\n", reqTransfer.ReqOrResp)
 	fmt.Printf("[sretrieve] .Request   = %v\n", reqTransfer.Request)
+	fmt.Printf("[sretrieve] .N         = \"%v\"\n", reqTransfer.N)
+	fmt.Printf("[sretrieve] .Offset    = %v\n", reqTransfer.Offset)
 
-	// Assert Offset0==0 in this version
+	// Get N and Offset
+	Nstr := reqTransfer.N
+	var N int64
+	N, err := strconv.ParseInt(Nstr, 10, 64)
+	if err != nil {
+		return errors.New(fmt.Sprintf("[sretrieve] (HandleRequestTransfer) N from request could not be converted to int64 (N=\"%v\")", reqTransfer.N))
+	}
+	var Offset int64
+	Offset = int64(reqTransfer.Offset)
+	fmt.Printf("[sretrieve] (HandleRequestTransfer) N=%d (int64), Offset=%d (int64)\n", N, Offset)
 
-	// Make sure we have this Cid + Cid's total size at Offset0
-
-	// PchAddress - save it somewhere for later voucher validation
-
-	// Prepare a ResponseInitialize struct
+	// Get N bytes starting at Offset
+	var bytes []byte
+	bytes, err = ds.GetBytes(cstate.Cid, N, Offset)
+	if err != nil {
+		return errors.New(fmt.Sprintf("[sretrieve] (HandleRequestTransfer) GetBytes failed with '%v'", err))
+	}
+	var bytesBase64 string
+	bytesBase64 = b64.StdEncoding.EncodeToString(bytes)
 
 	// Serialize to Json and fire away
-
-	jsonStr := fmt.Sprintf(`{"type":"response","response":%v,"responseCode":%v,"totalBytes":68157440}`, ReqRespInitialize, ResponseCodeOk)
-
-	err := writeToStream(stream, jsonStr)
-
+	jsonStr := fmt.Sprintf(`{"type":"response","response":%v,"responseCode":%v,"data":"%v"}`, ReqRespTransfer, ResponseCodeOk, bytesBase64)
+	err = writeToStream(stream, jsonStr)
 	return err
 }
 
@@ -176,7 +209,7 @@ func getIncomingJsonString(r io.Reader) (error, string) {
 	return err, intermediateBuffer.String()
 }
 
-func writeToStream(stream inet.Stream, s string) error {
+func writeToStream(stream network.Stream, s string) error {
 	w := bufio.NewWriter(stream)
 	sBuf := []byte(s)
 	sBytes := len(s)
