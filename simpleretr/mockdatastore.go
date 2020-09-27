@@ -3,6 +3,7 @@ package simpleretr
 import (
 	b64 "encoding/base64"
 	"errors"
+	"fmt"
 )
 
 type MockDataStore interface {
@@ -29,15 +30,23 @@ func (ds *mockDataStore) HasCid(cid string) (bool, error) {
 }
 
 func (ds *mockDataStore) GetBytes(cid string, offset int64, count int64) ([]byte, error) {
+	fmt.Printf("[sretrieve] (GetBytes) Entering function with offset=%v, count=%v, cid='%v'\n", offset, count, cid)
 	hasCid, _ := ds.HasCid(cid)
+	fmt.Printf("[sretrieve] (GetBytes) hasCid='%v'\n", hasCid)
 	if !hasCid {
 		return []byte(nil), errors.New("[sretrieve] (GetBytes) Unrecognized cid")
 	}
+
+	fmt.Printf("[sretrieve] (GetBytes) size of ds.mockCidBytes ='%v'\n", len(ds.mockCidBytes))
 
 	log.Infof("[sretrieve] (GetBytes) Starting to load a []byte with mock data\n")
 	bytes := []byte(ds.mockCidBytes)
 	log.Infof("[sretrieve] (GetBytes)  Done loading\n")
 
-	log.Infof("[sretrieve] (GetBytes)  Returning bytes[%v:%v]\n", offset, offset+count)
-	return bytes[offset : offset+count], nil
+	fmt.Printf("[sretrieve] (GetBytes) First 8 bytes of Cid: %x %x %x %x %x %x %x %x\n", bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7])
+
+	retBytes := bytes[offset : offset+count]
+	//log.Infof
+	fmt.Printf("[sretrieve] (GetBytes)  Returning bytes[%v:%v] with len %v bytes\n", offset, offset+count, len(retBytes))
+	return retBytes, nil
 }

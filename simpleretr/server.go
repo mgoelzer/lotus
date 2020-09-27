@@ -177,7 +177,7 @@ func HandleRequestTransfer(reqTransfer *RequestTransfer, stream network.Stream, 
 
 	// Get N bytes starting at Offset
 	var bytes []byte
-	bytes, err = ds.GetBytes(cstate.Cid, N, Offset)
+	bytes, err = ds.GetBytes(cstate.Cid, Offset, N)
 	if err != nil {
 		return errors.New(fmt.Sprintf("[sretrieve] (HandleRequestTransfer) GetBytes failed with '%v'", err))
 	}
@@ -186,6 +186,7 @@ func HandleRequestTransfer(reqTransfer *RequestTransfer, stream network.Stream, 
 
 	// Serialize to Json and fire away
 	jsonStr := fmt.Sprintf(`{"type":"response","response":%v,"responseCode":%v,"data":"%v"}`, ReqRespTransfer, ResponseCodeOk, bytesBase64)
+	fmt.Printf("[sretrieve] (HandleRequestTransfer) json response: \"%v\"\n", jsonStr)
 	err = writeToStream(stream, jsonStr)
 	return err
 }
