@@ -13,11 +13,11 @@ import (
 
 var log = logging.Logger("simple-retrieve")
 
-////////////////////////////////////////////////////////
-//                                                    //
-//                    CONSTANTS                       //
-//                                                    //
-////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//                                                                           //
+//                                CONSTANTS                                  //
+//                                                                           //
+///////////////////////////////////////////////////////////////////////////////
 
 // If you are implementing the other side of this protocol in another language,
 // translate all the const blocks below to your language.
@@ -115,23 +115,3 @@ type ResponseTransfer struct {
 	ErrorMessage string
 	Data         string
 }
-
-/* // Convert status to internal error.
-func (res *Response) statusToError() error {
-	switch res.Status {
-	case Ok, Partial:
-		return nil
-		// FIXME: Consider if we want to not process `Partial` responses
-		//  and return an error instead.
-	case NotFound:
-		return xerrors.Errorf("not found")
-	case GoAway:
-		return xerrors.Errorf("not handling 'go away' chainxchg responses yet")
-	case InternalError:
-		return xerrors.Errorf("block sync peer errored: %s", res.ErrorMessage)
-	case BadRequest:
-		return xerrors.Errorf("block sync request invalid: %s", res.ErrorMessage)
-	default:
-		return xerrors.Errorf("unrecognized response code: %d", res.Status)
-	}
-} */

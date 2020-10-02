@@ -1,12 +1,14 @@
 package simpleretr
 
 import (
-	//"bufio"
 	//"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
+
+	"sync"
+	"time"
 
 	//"go.opencensus.io/trace"
 	//"golang.org/x/xerrors"
@@ -47,20 +49,37 @@ func (s *server) HandleStream(stream network.Stream) {
 	defer stream.Close()
 	fmt.Println(">>> [start] HandleStream()")
 
+	// For waiting on go routine completion
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	// Instantiate the state struct for this specific /fil/simple-retrieve connection
 	cstate := &connectionState{}
 
-	for {
-		err, requestJson := getIncomingJsonString(bufio.NewReader(stream))
-		if err != nil {
-			log.Warnf("failed to read incoming message: %s\n", err)
-			break
-			//return
+	go func(cstate *connectionState, stream network.Stream, wg *sync.WaitGroup) {
+		defer wg.Done()
+		for {
+			fmt.Printf("[sretrieve] (%s) Inside for loop\n", time.Now().String())
+			fmt.Printf("[sretrieve] (%s) Starting wait on `bufio.NewReader(*stream)`\n", time.Now().String())
+			rdr := bufio.NewReader(*stream)
+			fmt.Printf("[sretrieve] (%s) Finished wait on `bufio.NewReader(*stream)`\n", time.Now().String())
+			err, requestJson := getIncomingJsonString(rdr)
+			if err != nil {
+				log.Warnf("failed to read incoming message: %s\n", err)
+				break
+				//return
+			}
+			//if len(requestJson) > 0 {
+			fmt.Printf("READ> %s\n\n", requestJson)
+			UnmarshallJsonAndHandle(requestJson, *stream, cstate)
+			//}
+			time.Sleep(1 * time.Second)
 		}
-		fmt.Printf("READ> %s\n\n", requestJson)
-		UnmarshallJsonAndHandle(requestJson, stream, cstate)
-	}
+	}(cstate, stream, &wg)
 
+	fmt.Printf("[sretrieve] Waiting on wait group\n")
+	wg.Wait()
+	fmt.Printf("[sretrieve] Finished waiting on wait group\n")
 	fmt.Println(">>> [end] HandleStream()")
 }
 
@@ -122,10 +141,13 @@ func HandleRequestInitialize(reqInitialize *RequestInitialize, stream network.St
 	cstate.Offset0 = reqInitialize.Offset0
 
 	// PchAddress - save it somewhere for later voucher validation
+	// TODO
 
 	// Prepare a ResponseInitialize struct
+	// TODO
 
 	// Serialize to Json and fire away
+	// TODO:  fake response
 	jsonStr := fmt.Sprintf(`{"type":"response","response":%v,"responseCode":%v,"totalBytes":68157440}`, ReqRespInitialize, ResponseCodeOk)
 	err = writeToStream(stream, jsonStr)
 	return err
@@ -174,7 +196,7 @@ func getIncomingJsonString(r io.Reader) (error, string) {
 		//fmt.Printf("n = %v | buf = %v | buf[:n]= %q\n", n, buf, buf[:n])
 		intermediateBuffer.Write(buf[:n])
 		if err == io.EOF {
-			fmt.Printf("readIncomingString:  EOF\n")
+			//fmt.Printf("readIncomingString:  EOF\n")
 			break
 		} else if err != nil {
 			fmt.Printf("readIncomingString:  error while reading (%v)\n", err)
