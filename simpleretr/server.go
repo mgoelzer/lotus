@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"sync"
 	"time"
 
 	//"go.opencensus.io/trace"
@@ -50,52 +49,67 @@ func (s *server) HandleStream(stream network.Stream) {
 	fmt.Println(">>> [start] HandleStream()")
 
 	// For waiting on go routine completion
-	var wg sync.WaitGroup
-	wg.Add(1)
+	//var wg sync.WaitGroup
+	//wg.Add(1)
 
 	// Instantiate the state struct for this specific /fil/simple-retrieve connection
 	cstate := &connectionState{}
 
-	go func(cstate *connectionState, stream network.Stream, wg *sync.WaitGroup) {
-		defer wg.Done()
-		for {
-			fmt.Printf("[sretrieve] (%s) Inside for loop\n", time.Now().String())
-			fmt.Printf("[sretrieve] (%s) Starting wait on `bufio.NewReader(*stream)`\n", time.Now().String())
-			rdr := bufio.NewReader(*stream)
-			fmt.Printf("[sretrieve] (%s) Finished wait on `bufio.NewReader(*stream)`\n", time.Now().String())
-			err, requestJson := getIncomingJsonString(rdr)
-			if err != nil {
-				log.Warnf("failed to read incoming message: %s\n", err)
-				break
-				//return
-			}
-			//if len(requestJson) > 0 {
-			fmt.Printf("READ> %s\n\n", requestJson)
-			UnmarshallJsonAndHandle(requestJson, *stream, cstate)
-			//}
-			time.Sleep(1 * time.Second)
+	//go func(cstate *connectionState, stream network.Stream, wg *sync.WaitGroup) {
+	//	defer wg.Done()
+	for {
+		fmt.Printf("[sretrieve] (HandleStream) (%s) Inside for loop\n", time.Now().String())
+		fmt.Printf("[sretrieve] (HandleStream) (%s) Starting wait on `bufio.NewReader(*stream)`\n", time.Now().String())
+		rdr := bufio.NewReader(stream)
+		fmt.Printf("[sretrieve] (HandleStream) (%s) Finished wait on `bufio.NewReader(*stream)`\n", time.Now().String())
+		err, requestJson := getIncomingJsonString(rdr)
+		fmt.Printf("[sretrieve] (HandleStream) requestJson = %s, err = %v\n", requestJson, err)
+		if err == io.EOF {
+			fmt.Printf("[sretrieve] (HandleStream) Note:  getIncomingJsonString returned EOF; continuing...\n\n")
 		}
-	}(cstate, stream, &wg)
+		bNullTerm := requestJson[len(requestJson)-1] == '\x00'
+		fmt.Printf("[sretrieve] (HandleStream) len(requestJson) = %v, bNullTerm=%v \n\n", len(requestJson), bNullTerm)
+		if bNullTerm {
+			requestJson = requestJson[:len(requestJson)-1]
+		}
+		fmt.Printf("[sretrieve] (HandleStream) len(requestJson) = %v, bNullTerm=%v \n\n", len(requestJson), bNullTerm)
 
-	fmt.Printf("[sretrieve] Waiting on wait group\n")
-	wg.Wait()
-	fmt.Printf("[sretrieve] Finished waiting on wait group\n")
-	fmt.Println(">>> [end] HandleStream()")
+		if len(requestJson) > 0 {
+			fmt.Printf("[sretrieve] (HandleStream) <<< READ >>> %s\n\n", requestJson)
+			UnmarshallJsonAndHandle(requestJson, stream, cstate)
+		} else if err != nil {
+			log.Warnf("[sretrieve] (HandleStream) failed to read incoming message: %s\n", err)
+			break
+			//return
+		}
+		time.Sleep(1 * time.Second)
+	}
+	//}(cstate, stream, &wg)
+
+	fmt.Printf("[sretrieve] (HandleStream) Waiting on wait group\n")
+	//wg.Wait()
+	fmt.Printf("[sretrieve] (HandleStream) Finished waiting on wait group\n")
+	fmt.Println("[sretrieve] end - HandleStream()")
 }
 
 func UnmarshallJsonAndHandle(jsonStr string, stream network.Stream, cstate *connectionState) error {
 	genericReqOrResp := GenericRequestOrResponse{}
+	fmt.Printf("[sretrieve] UnmarshallJsonAndHandle:  entered function")
 	if err := json.Unmarshal([]byte(jsonStr), &genericReqOrResp); err != nil {
+		log.Errorf("[sretrieve] UnmarshallJsonAndHandle:  exiting: failed to unmarshal jsonStr='%s'", jsonStr)
 		return err
 	}
 	if genericReqOrResp.ReqOrResp == "request" {
 		switch genericReqOrResp.Request {
 		case ReqRespInitialize:
+			fmt.Printf("[sretrieve] UnmarshallJsonAndHandle:  in case ReqRespInitialize")
 			reqInitialize := RequestInitialize{}
 			if err := json.Unmarshal([]byte(jsonStr), &reqInitialize); err != nil {
+				log.Errorf("[sretrieve] UnmarshallJsonAndHandle:  json.Unmarshal failed (err='%v')", err)
 				return err
 			}
 			if err := HandleRequestInitialize(&reqInitialize, stream, cstate); err != nil {
+				log.Errorf("[sretrieve] UnmarshallJsonAndHandle:  HandleRequestInitialize failed (err='%v')", err)
 				return err
 			}
 		case ReqRespConfirmTransferParams:
@@ -112,6 +126,8 @@ func UnmarshallJsonAndHandle(jsonStr string, stream network.Stream, cstate *conn
 			}
 		case ReqRespVoucher:
 			fmt.Println("[sretrieve] Voucher")
+		default:
+			log.Errorf("[sretrieve] UnmarshallJsonAndHandle:  fell through to default case (jsonStr='%s')", jsonStr)
 		}
 	} else {
 		return errors.New("[sretrieve] Ignoring: server should never receive a Response struct")
@@ -193,13 +209,16 @@ func getIncomingJsonString(r io.Reader) (error, string) {
 	buf := make([]byte, 32)
 	for {
 		n, err := r.Read(buf)
-		//fmt.Printf("n = %v | buf = %v | buf[:n]= %q\n", n, buf, buf[:n])
+		fmt.Printf("[sretrieve] getIncomingJsonString:  n = %v \n                                    buf = %v \n                                    buf[:n]= %s\n", n, buf, buf[:n])
 		intermediateBuffer.Write(buf[:n])
 		if err == io.EOF {
-			//fmt.Printf("readIncomingString:  EOF\n")
+			fmt.Printf("[sretrieve] getIncomingJsonString:  EOF\n")
+			break
+		} else if buf[n-1] == '\x00' {
+			fmt.Printf("[sretrieve] getIncomingJsonString:  NULL terminator\n")
 			break
 		} else if err != nil {
-			fmt.Printf("readIncomingString:  error while reading (%v)\n", err)
+			fmt.Printf("[sretrieve] getIncomingJsonString:  error while reading (%v)\n", err)
 			break
 		}
 	}
