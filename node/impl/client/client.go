@@ -33,6 +33,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/filecoin-project/go-address"
+	"github.com/filecoin-project/go-fil-markets/discovery"
 	"github.com/filecoin-project/go-fil-markets/pieceio"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	rm "github.com/filecoin-project/go-fil-markets/retrievalmarket"
@@ -59,7 +60,7 @@ import (
 
 var DefaultHashFunction = uint64(mh.BLAKE2B_MIN + 31)
 
-const dealStartBufferHours uint64 = 24
+const dealStartBufferHours uint64 = 49
 
 type API struct {
 	fx.In
@@ -70,7 +71,7 @@ type API struct {
 	paych.PaychAPI
 
 	SMDealClient storagemarket.StorageClient
-	RetDiscovery rm.PeerResolver
+	RetDiscovery discovery.PeerResolver
 	Retrieval    rm.RetrievalClient
 	Chain        *store.ChainStore
 
@@ -116,7 +117,13 @@ func (a *API) ClientStartDeal(ctx context.Context, params *api.StartDealParams) 
 			}
 		}
 	}
-	exist, err := a.WalletHas(ctx, params.Wallet)
+
+	walletKey, err := a.StateAPI.StateManager.ResolveToKeyAddress(ctx, params.Wallet, nil)
+	if err != nil {
+		return nil, xerrors.Errorf("failed resolving params.Wallet addr: %w", params.Wallet)
+	}
+
+	exist, err := a.WalletHas(ctx, walletKey)
 	if err != nil {
 		return nil, xerrors.Errorf("failed getting addr from wallet: %w", params.Wallet)
 	}
@@ -153,7 +160,7 @@ func (a *API) ClientStartDeal(ctx context.Context, params *api.StartDealParams) 
 		}
 
 		blocksPerHour := 60 * 60 / build.BlockDelaySecs
-		dealStart = ts.Height() + abi.ChainEpoch(dealStartBufferHours*blocksPerHour)
+		dealStart = ts.Height() + abi.ChainEpoch(dealStartBufferHours*blocksPerHour) // TODO: Get this from storage ask
 	}
 
 	result, err := a.SMDealClient.ProposeStorageDeal(ctx, storagemarket.ProposeStorageDealParams{
@@ -199,6 +206,7 @@ func (a *API) ClientListDeals(ctx context.Context) ([]api.DealInfo, error) {
 			Duration:      uint64(v.Proposal.Duration()),
 			DealID:        v.DealID,
 			CreationTime:  v.CreationTime.Time(),
+			Verified:      v.Proposal.VerifiedDeal,
 		}
 	}
 
@@ -222,6 +230,7 @@ func (a *API) ClientGetDealInfo(ctx context.Context, d cid.Cid) (*api.DealInfo, 
 		Duration:      uint64(v.Proposal.Duration()),
 		DealID:        v.DealID,
 		CreationTime:  v.CreationTime.Time(),
+		Verified:      v.Proposal.VerifiedDeal,
 	}, nil
 }
 
@@ -614,18 +623,18 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 	return
 }
 
-func (a *API) ClientQueryAsk(ctx context.Context, p peer.ID, miner address.Address) (*storagemarket.SignedStorageAsk, error) {
+func (a *API) ClientQueryAsk(ctx context.Context, p peer.ID, miner address.Address) (*storagemarket.StorageAsk, error) {
 	mi, err := a.StateMinerInfo(ctx, miner, types.EmptyTSK)
 	if err != nil {
 		return nil, xerrors.Errorf("failed getting miner info: %w", err)
 	}
 
 	info := utils.NewStorageProviderInfo(miner, mi.Worker, mi.SectorSize, p, mi.Multiaddrs)
-	signedAsk, err := a.SMDealClient.GetAsk(ctx, info)
+	ask, err := a.SMDealClient.GetAsk(ctx, info)
 	if err != nil {
 		return nil, err
 	}
-	return signedAsk, nil
+	return ask, nil
 }
 
 func (a *API) ClientCalcCommP(ctx context.Context, inpath string) (*api.CommPRet, error) {
@@ -847,6 +856,7 @@ func newDealInfo(v storagemarket.ClientDeal) api.DealInfo {
 		Duration:      uint64(v.Proposal.Duration()),
 		DealID:        v.DealID,
 		CreationTime:  v.CreationTime.Time(),
+		Verified:      v.Proposal.VerifiedDeal,
 	}
 }
 
